@@ -1,44 +1,52 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, StatusBar } from 'react-native';
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  StatusBar,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
 import { ExpenseItem } from '../components/expense/ExpenseItem';
-import { Expense } from '../types/expense.types';
+import { useExpenses } from '../context/ExpenseContext';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// Mock data for now
-const MOCK_EXPENSES: Expense[] = [
-  {
-    id: '1',
-    amount: 250,
-    category: 'Food',
-    description: 'Lunch at restaurant',
-    date: new Date(),
-    createdAt: new Date(),
-  },
-  {
-    id: '2',
-    amount: 50,
-    category: 'Transport',
-    description: 'Auto to office',
-    date: new Date(),
-    createdAt: new Date(),
-  },
-  {
-    id: '3',
-    amount: 1200,
-    category: 'Utilities',
-    description: 'Electricity bill',
-    date: new Date(2025, 9, 28),
-    createdAt: new Date(),
-  },
-];
 
 export const HomeScreen: React.FC = () => {
-  const [expenses] = useState<Expense[]>(MOCK_EXPENSES);
+  const { expenses, loading, deleteExpense, getTotalExpenses } = useExpenses();
 
-  const totalExpenses = expenses.reduce(
-    (sum, expense) => sum + expense.amount,
-    0,
-  );
+  const handleDeleteExpense = (id: string, description: string) => {
+    Alert.alert(
+      'Delete Expense',
+      `Are you sure you want to delete "${description}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteExpense(id);
+            } catch {
+              Alert.alert('Error', 'Failed to delete expense');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading expenses...</Text>
+      </View>
+    );
+  }
+
+  const totalExpenses = getTotalExpenses();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -48,13 +56,21 @@ export const HomeScreen: React.FC = () => {
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>Total Spent</Text>
           <Text style={styles.totalAmount}>₹{totalExpenses.toFixed(2)}</Text>
+          <Text style={styles.totalCount}>{expenses.length} expenses</Text>
         </View>
       </View>
 
       <FlatList
         data={expenses}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <ExpenseItem expense={item} />}
+        renderItem={({ item }) => (
+          <ExpenseItem
+            expense={item}
+            onPress={() =>
+              handleDeleteExpense(item.id, item.description || item.category)
+            }
+          />
+        )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -74,6 +90,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
   },
   header: {
     paddingHorizontal: SPACING.md,
@@ -100,6 +127,12 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
     color: COLORS.surface,
+    marginTop: SPACING.xs,
+  },
+  totalCount: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.surface,
+    opacity: 0.8,
     marginTop: SPACING.xs,
   },
   list: {
