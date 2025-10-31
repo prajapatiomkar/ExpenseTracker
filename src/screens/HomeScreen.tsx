@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,35 +6,46 @@ import {
   FlatList,
   StatusBar,
   ActivityIndicator,
-  Alert,
+  TouchableOpacity,
 } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { CompositeScreenProps } from '@react-navigation/native';
+import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import { RootStackParamList, MainTabParamList } from '../navigation/types';
 import { ExpenseItem } from '../components/expense/ExpenseItem';
+import { Input } from '../components/common/Input';
 import { useExpenses } from '../context/ExpenseContext';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
+import { Category, CATEGORIES } from '../types/expense.types';
 import { SafeAreaView } from 'react-native-safe-area-context';
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<MainTabParamList, 'Home'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
-export const HomeScreen: React.FC = () => {
-  const { expenses, loading, deleteExpense, getTotalExpenses } = useExpenses();
+export const HomeScreen: React.FC<Props> = ({ navigation }) => {
+  const { expenses, loading, getTotalExpenses } = useExpenses();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>(
+    'All',
+  );
 
-  const handleDeleteExpense = (id: string, description: string) => {
-    Alert.alert(
-      'Delete Expense',
-      `Are you sure you want to delete "${description}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteExpense(id);
-            } catch {
-              Alert.alert('Error', 'Failed to delete expense');
-            }
-          },
-        },
-      ],
-    );
+  // Filter expenses based on search and category
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter(expense => {
+      const matchesSearch =
+        expense.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        expense.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        expense.amount.toString().includes(searchQuery);
+
+      const matchesCategory =
+        selectedCategory === 'All' || expense.category === selectedCategory;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [expenses, searchQuery, selectedCategory]);
+  const handleExpensePress = (expenseId: string) => {
+    navigation.navigate('ExpenseDetail', { expenseId });
   };
 
   if (loading) {
@@ -47,6 +58,10 @@ export const HomeScreen: React.FC = () => {
   }
 
   const totalExpenses = getTotalExpenses();
+  const filteredTotal = filteredExpenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0,
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -60,24 +75,75 @@ export const HomeScreen: React.FC = () => {
         </View>
       </View>
 
+      <View style={styles.searchContainer}>
+        <Input
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search expenses..."
+          containerStyle={styles.searchInput}
+        />
+      </View>
+
+      <View style={styles.filterContainer}>
+        <Text style={styles.filterLabel}>Filter:</Text>
+        <FlatList
+          horizontal
+          data={['All', ...CATEGORIES]}
+          keyExtractor={item => item}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                selectedCategory === item && styles.filterChipActive,
+              ]}
+              onPress={() => setSelectedCategory(item as Category | 'All')}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  selectedCategory === item && styles.filterChipTextActive,
+                ]}
+              >
+                {item}
+              </Text>
+            </TouchableOpacity>
+          )}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterList}
+        />
+      </View>
+
+      {searchQuery || selectedCategory !== 'All' ? (
+        <View style={styles.resultInfo}>
+          <Text style={styles.resultText}>
+            {filteredExpenses.length} result(s) • ₹{filteredTotal.toFixed(2)}
+          </Text>
+        </View>
+      ) : null}
+
       <FlatList
-        data={expenses}
+        data={filteredExpenses}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <ExpenseItem
             expense={item}
-            onPress={() =>
-              handleDeleteExpense(item.id, item.description || item.category)
-            }
+            onPress={() => handleExpensePress(item.id)}
           />
         )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No expenses yet</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery || selectedCategory !== 'All'
+                ? 'No matching expenses'
+                : 'No expenses yet'}
+            </Text>
             <Text style={styles.emptySubtext}>
-              Start tracking your expenses!
+              {searchQuery || selectedCategory !== 'All'
+                ? 'Try adjusting your search or filter'
+                : 'Start tracking your expenses!'}
             </Text>
           </View>
         }
@@ -134,6 +200,54 @@ const styles = StyleSheet.create({
     color: COLORS.surface,
     opacity: 0.8,
     marginTop: SPACING.xs,
+  },
+  searchContainer: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+  },
+  searchInput: {
+    marginBottom: 0,
+  },
+  filterContainer: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  filterLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.xs,
+  },
+  filterList: {
+    gap: SPACING.sm,
+  },
+  filterChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterChipText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+  },
+  filterChipTextActive: {
+    color: COLORS.surface,
+    fontWeight: '600',
+  },
+  resultInfo: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+  resultText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
   },
   list: {
     padding: SPACING.md,
